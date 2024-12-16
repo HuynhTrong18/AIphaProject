@@ -5,6 +5,7 @@ import os
 import logging
 import requests
 import openai
+import time
 from . import conversation_client,sample_user,synthesis
 
 # ACS Integration Settings
@@ -180,21 +181,45 @@ def formatApiResponseStreaming(rawResponse):
 
     return response
 
+# def stream_without_data(response, history_metadata={}):
+#     responseText = ""
+#     for line in response:
+#         if line["choices"]:
+#             deltaText = line["choices"][0]["delta"].get('content')
+#         else:
+#             deltaText = ""
+#         if deltaText and deltaText != "[DONE]":
+#             responseText = deltaText
+
+#         response_obj = {
+#             "id": line["id"],
+#             "model": line["model"],
+#             "created": line["created"],
+#             "object": line["object"],
+#             "choices": [{
+#                 "messages": [{
+#                     "role": "assistant",
+#                     "content": responseText
+#                 }]
+#             }],
+#             "history_metadata": history_metadata
+#         }
+#         yield format_as_ndjson(response_obj)
 def stream_without_data(response, history_metadata={}):
     responseText = ""
     for line in response:
-        if line["choices"]:
-            deltaText = line["choices"][0]["delta"].get('content')
+        if line.choices:
+            deltaText = line.choices[0].delta.content
         else:
             deltaText = ""
         if deltaText and deltaText != "[DONE]":
             responseText = deltaText
 
         response_obj = {
-            "id": line["id"],
-            "model": line["model"],
-            "created": line["created"],
-            "object": line["object"],
+            "id": line.id,
+            "model": line.model,
+            "created": line.created,
+            "object": line.object,
             "choices": [{
                 "messages": [{
                     "role": "assistant",
@@ -400,31 +425,34 @@ def conversation_groq(request_body):
                 "role": message["role"] ,
                 "content": message["content"]
             })
-
     response = client.chat.completions.create(
         model="llama3-8b-8192",
         messages = messages,
         temperature=float(AZURE_OPENAI_TEMPERATURE),
         max_tokens=int(AZURE_OPENAI_MAX_TOKENS),
         top_p=float(AZURE_OPENAI_TOP_P),
-        stop=AZURE_OPENAI_STOP_SEQUENCE.split("|") if AZURE_OPENAI_STOP_SEQUENCE else None
+        stop=AZURE_OPENAI_STOP_SEQUENCE.split("|") if AZURE_OPENAI_STOP_SEQUENCE else None,
+        stream=SHOULD_STREAM
     )
     history_metadata = request_body.get("history_metadata", {})
 
-    response_obj = {
-        "id": response.id,
-        "model": response.model,
-        "created": response.created,
-        "object": response.object,
-        "choices": [{
-            "messages": [{
-                "role": "assistant",
-                "content": response.choices[0].message.content
-            }]
-        }],
-        "history_metadata": history_metadata
-    }
-    return HttpResponse(format_as_ndjson(response_obj), content_type='text/event-stream')
+    if not SHOULD_STREAM:
+        response_obj = {
+            "id": response.id,
+            "model": response.model,
+            "created": response.created,
+            "object": response.object,
+            "choices": [{
+                "messages": [{
+                    "role": "assistant",
+                    "content": response.choices[0].message.content
+                }]
+            }],
+            "history_metadata": history_metadata
+        }
+        return HttpResponse(format_as_ndjson(response_obj), content_type='text/event-stream')
+    else:
+        return HttpResponse(stream_without_data(response, history_metadata), content_type='text/event-stream')
 
 def generate_title_groq(conversation_messages):
     from groq import Groq

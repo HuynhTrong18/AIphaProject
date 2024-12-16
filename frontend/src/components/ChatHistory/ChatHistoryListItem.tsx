@@ -63,10 +63,6 @@ export const ChatHistoryListItemCell: React.FC<ChatHistoryListItemCellProps> = (
         styles: { main: { maxWidth: 450 } },
     }
 
-    if (!item) {
-        return null;
-    }
-
     useEffect(() => {
         if (textFieldFocused && textFieldRef.current) {
             textFieldRef.current.focus();
@@ -80,6 +76,10 @@ export const ChatHistoryListItemCell: React.FC<ChatHistoryListItemCellProps> = (
             setEditTitle('')
         }
     }, [appStateContext?.state.currentChat?.id, item?.id]);
+    
+    if (!item) {
+        return null;
+    }
 
     const onDelete = async () => {
         let response = await historyDelete(item.id)
